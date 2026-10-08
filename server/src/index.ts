@@ -23,6 +23,8 @@ app.use("*", async (c, next) => {
   await next()
   const path = c.req.path
   if (!path.startsWith("/api/")) return
+  // Health probes (k8s, docker) run every few seconds — never log them.
+  if (path === "/api/health") return
 
   const line = `${c.req.method} ${path} ${c.res.status} ${Math.round(performance.now() - started)}ms`
   const noisy =
