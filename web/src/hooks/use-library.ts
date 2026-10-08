@@ -52,10 +52,11 @@ export function useLibrary(onUnauthorized: () => void) {
   useEffect(() => {
     void refresh()
 
-    const source = new EventSource(withToken("/api/events"))
-    source.onopen = () => setConnected(true)
-    source.onerror = () => setConnected(false)
-    source.onmessage = (message) => {
+    let source: EventSource | null = null
+    let reconnectTimer: number | undefined
+    let disposed = false
+
+    const handleMessage = (message: MessageEvent) => {
       try {
         const payload = JSON.parse(message.data) as ServerEvent
         if (payload.type === "snapshot") {
@@ -76,15 +77,49 @@ export function useLibrary(onUnauthorized: () => void) {
       }
     }
 
-    return () => source.close()
+    const connect = () => {
+      if (disposed) return
+      source = new EventSource(withToken("/api/events"))
+      source.onopen = () => setConnected(true)
+      source.onmessage = handleMessage
+      source.onerror = () => {
+        setConnected(false)
+        // Transient drops reconnect on their own, but a fatal error (e.g. a
+        // 502 while the server restarts) closes the stream for good — recreate
+        // it so live updates come back without a page reload.
+        if (source && source.readyState === EventSource.CLOSED) {
+          source.close()
+          source = null
+          window.clearTimeout(reconnectTimer)
+          reconnectTimer = window.setTimeout(connect, 3000)
+        }
+      }
+    }
+
+    connect()
+
+    return () => {
+      disposed = true
+      window.clearTimeout(reconnectTimer)
+      source?.close()
+    }
   }, [refresh])
 
-  // Poll while the stream is down (server restarted, phone woke up, ...).
+  // Poll while the stream is down (server restarting, phone just woke up, ...).
   useEffect(() => {
     if (connected) return
-    const timer = setInterval(() => void refresh(), 5000)
+    const timer = setInterval(() => void refresh(), 30_000)
     return () => clearInterval(timer)
   }, [connected, refresh])
+
+  // Catch up immediately when the app becomes visible again.
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refresh()
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange)
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange)
+  }, [refresh])
 
   const addEpisode = useCallback(async (url: string) => {
     const episode = await api<Episode>("/api/episodes", {
