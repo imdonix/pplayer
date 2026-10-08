@@ -1,0 +1,11 @@
+{
+  "name": "pplayer",
+  "private": true,
+  "scripts": {
+    "dev:server": "bun run --cwd server dev",
+    "dev:web": "bun run --cwd web dev",
+    "build": "bun run --cwd web build",
+    "start": "bun run --cwd server start",
+    "icons": "bun run --cwd web icons"
+  }
+}

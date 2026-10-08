@@ -1,0 +1,22 @@
+services:
+  pplayer:
+    build: .
+    image: pplayer
+    container_name: pplayer
+    restart: unless-stopped
+    ports:
+      # Host port is configurable: HOST_PORT=8080 docker compose up -d
+      - "${HOST_PORT:-3000}:3000"
+    environment:
+      # Change this! The web app asks for this key on first launch.
+      API_KEY: ${API_KEY:-changeme}
+      # debug | info | warn | error (default: info)
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Optional: export YouTube cookies to get past bot checks:
+      # YTDLP_COOKIES: /cookies.txt
+    volumes:
+      - pplayer-data:/data
+      # - ./cookies.txt:/cookies.txt:ro
+
+volumes:
+  pplayer-data:
