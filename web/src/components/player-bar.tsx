@@ -62,8 +62,14 @@ export function PlayerBar() {
           </span>
         </div>
 
-        <div className="mt-1 flex items-center justify-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => player.skip(-15)} aria-label="Back 15 seconds">
+        <div className="relative mt-1 flex items-center justify-center">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="mr-4"
+            onClick={() => player.skip(-15)}
+            aria-label="Back 15 seconds"
+          >
             <Rewind />
           </Button>
           <Button
@@ -80,13 +86,19 @@ export function PlayerBar() {
               <Play className="translate-x-[1px]" />
             )}
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => player.skip(30)} aria-label="Forward 30 seconds">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="ml-4"
+            onClick={() => player.skip(30)}
+            aria-label="Forward 30 seconds"
+          >
             <FastForward />
           </Button>
           <Button
             variant="ghost"
             size="sm"
-            className="w-12 tabular-nums text-xs text-muted-foreground"
+            className="absolute right-0 w-12 tabular-nums text-xs text-muted-foreground"
             onClick={player.cycleRate}
             aria-label="Playback speed"
           >
