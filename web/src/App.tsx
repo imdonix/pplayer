@@ -86,33 +86,26 @@ function Library({ onSignOut }: { onSignOut: () => void }) {
     return extras.length === 0 ? episodes : [...episodes, ...extras]
   }, [episodes, offline.offline])
 
-  // Smart ordering: keep listening first, then episodes waiting on the device,
-  // then the ones already finished, and finally the untried ones — each group
-  // in last-listened / last-saved order.
+  // Smart ordering: in-progress first (most recently listened), then fresh
+  // episodes (newest first, downloaded or not), then the finished ones.
   const sections = useMemo(() => {
     const inProgress: Episode[] = []
-    const downloaded: Episode[] = []
-    const watched: Episode[] = []
     const fresh: Episode[] = []
+    const watched: Episode[] = []
     for (const episode of visibleEpisodes) {
       if (episode.positionSec > 5) inProgress.push(episode)
       else if (episode.completedAt != null) watched.push(episode)
-      else if (offline.offline[episode.id]) downloaded.push(episode)
       else fresh.push(episode)
     }
     inProgress.sort((a, b) => b.updatedAt - a.updatedAt)
-    downloaded.sort(
-      (a, b) => (offline.offline[b.id]?.savedAt ?? 0) - (offline.offline[a.id]?.savedAt ?? 0),
-    )
     watched.sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0))
     fresh.sort((a, b) => b.createdAt - a.createdAt)
     return [
-      { key: "continue", title: "Continue listening", episodes: inProgress },
-      { key: "downloaded", title: "Downloaded", episodes: downloaded },
-      { key: "watched", title: "Watched", episodes: watched },
+      { key: "continue", title: "Continue watching", episodes: inProgress },
       { key: "new", title: "New", episodes: fresh },
+      { key: "watched", title: "Watched", episodes: watched },
     ].filter((section) => section.episodes.length > 0)
-  }, [visibleEpisodes, offline.offline])
+  }, [visibleEpisodes])
 
   const handleDelete = useCallback(
     async (episode: Episode) => {
