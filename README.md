@@ -2,16 +2,20 @@
 
 A dead simple podcast downloader and player app
 
-| Desktop | Mobile |
-| :-: | :-: |
-| ![Desktop](docs/screenshot-desktop.png) | ![Mobile](docs/screenshot-mobile.png) |
+**Desktop**
+
+![Desktop](docs/screenshot-desktop.png)
+
+**Mobile**
+
+![Mobile](docs/screenshot-mobile.png)
 
 ## Features
 
 - **YouTube → podcast** — live progress for metadata, download and ffmpeg conversion
 - **Player** — seek, ±15/30 s skip, speed, resume, lock-screen controls (Media Session)
-- **Offline** — Spotify-style download toggle; audio is stored on the device (IndexedDB) and plays without a connection
-- **Library** — cached locally, survives offline reloads
+- **Offline** — per-episode downloads from the ⋮ menu; audio is stored on the device (IndexedDB) and plays without a connection
+- **Library** — cached locally, survives offline reloads; grouped into Continue listening / Downloaded / Watched / New
 - **Single API key** — one account, done
 - **One Docker image** — frontend, backend, SQLite, yt-dlp and ffmpeg in a single container
 

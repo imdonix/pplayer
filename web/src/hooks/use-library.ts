@@ -142,10 +142,22 @@ export function useLibrary(onUnauthorized: () => void) {
     setEpisodes((previous) => previous.map((item) => (item.id === id ? episode : item)))
   }, [])
 
-  const savePosition = useCallback((id: string, positionSec: number) => {
+  const savePosition = useCallback((id: string, positionSec: number, completed?: boolean) => {
+    // Keep the local list in step immediately: starting an episode again marks
+    // it unfinished, finishing it (position 0 + completed) files it under
+    // "Watched" without waiting for the next server refresh.
+    setEpisodes((previous) =>
+      previous.map((item) => {
+        if (item.id !== id) return item
+        const next: Episode = { ...item, positionSec, updatedAt: Date.now() }
+        if (completed === true) next.completedAt = Date.now()
+        else if (completed === false || positionSec > 5) next.completedAt = null
+        return next
+      }),
+    )
     api(`/api/episodes/${id}`, {
       method: "PATCH",
-      body: JSON.stringify({ positionSec }),
+      body: JSON.stringify({ positionSec, ...(completed === undefined ? {} : { completed }) }),
     }).catch(() => {})
   }, [])
 

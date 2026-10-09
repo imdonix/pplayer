@@ -17,6 +17,8 @@ export const episodes = sqliteTable("episodes", {
   filePath: text("file_path"),
   fileSize: integer("file_size"),
   positionSec: real("position_sec").notNull().default(0),
+  /** When the episode was last played to the end (null = never finished, or replayed since). */
+  completedAt: integer("completed_at"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 })

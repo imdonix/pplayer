@@ -12,6 +12,8 @@ export interface EpisodeDto {
   error: string | null
   fileSize: number | null
   positionSec: number
+  /** When the episode was finished, or null while it is unfinished. */
+  completedAt: number | null
   createdAt: number
   updatedAt: number
   /** Local thumbnail path (authenticated), if the thumbnail was cached on the server. */
@@ -37,6 +39,7 @@ export function toDto(row: EpisodeRow): EpisodeDto {
     error: row.error,
     fileSize: row.fileSize,
     positionSec: row.positionSec,
+    completedAt: row.completedAt ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     thumbnail: row.thumbnailPath ? `/api/thumbnails/${row.id}` : null,

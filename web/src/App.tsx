@@ -33,6 +33,18 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
   )
 }
 
+function SectionHeader({ title, count }: { title: string; count: number }) {
+  return (
+    <div className="flex items-center gap-3 pt-1">
+      <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        {title}
+      </h2>
+      <span className="h-px flex-1 bg-border" aria-hidden />
+      <span className="text-[11px] tabular-nums text-muted-foreground/70">{count}</span>
+    </div>
+  )
+}
+
 function Library({ onSignOut }: { onSignOut: () => void }) {
   const { episodes, connected, addEpisode, deleteEpisode, retryEpisode, savePosition } =
     useLibrary(onSignOut)
@@ -64,6 +76,7 @@ function Library({ onSignOut }: { onSignOut: () => void }) {
         error: null,
         fileSize: meta.size,
         positionSec: 0,
+        completedAt: null,
         createdAt: meta.savedAt,
         updatedAt: meta.savedAt,
         thumbnail: null,
@@ -72,6 +85,34 @@ function Library({ onSignOut }: { onSignOut: () => void }) {
       }))
     return extras.length === 0 ? episodes : [...episodes, ...extras]
   }, [episodes, offline.offline])
+
+  // Smart ordering: keep listening first, then episodes waiting on the device,
+  // then the ones already finished, and finally the untried ones — each group
+  // in last-listened / last-saved order.
+  const sections = useMemo(() => {
+    const inProgress: Episode[] = []
+    const downloaded: Episode[] = []
+    const watched: Episode[] = []
+    const fresh: Episode[] = []
+    for (const episode of visibleEpisodes) {
+      if (episode.positionSec > 5) inProgress.push(episode)
+      else if (episode.completedAt != null) watched.push(episode)
+      else if (offline.offline[episode.id]) downloaded.push(episode)
+      else fresh.push(episode)
+    }
+    inProgress.sort((a, b) => b.updatedAt - a.updatedAt)
+    downloaded.sort(
+      (a, b) => (offline.offline[b.id]?.savedAt ?? 0) - (offline.offline[a.id]?.savedAt ?? 0),
+    )
+    watched.sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0))
+    fresh.sort((a, b) => b.createdAt - a.createdAt)
+    return [
+      { key: "continue", title: "Continue listening", episodes: inProgress },
+      { key: "downloaded", title: "Downloaded", episodes: downloaded },
+      { key: "watched", title: "Watched", episodes: watched },
+      { key: "new", title: "New", episodes: fresh },
+    ].filter((section) => section.episodes.length > 0)
+  }, [visibleEpisodes, offline.offline])
 
   const handleDelete = useCallback(
     async (episode: Episode) => {
@@ -127,22 +168,29 @@ function Library({ onSignOut }: { onSignOut: () => void }) {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-2xl space-y-3 px-4 py-4">
-          {visibleEpisodes.length === 0 ? (
+        <main className="mx-auto w-full max-w-2xl px-4 py-4">
+          {sections.length === 0 ? (
             <EmptyState onAdd={() => setAddOpen(true)} />
           ) : (
-            visibleEpisodes.map((episode) => (
-              <EpisodeCard
-                key={episode.id}
-                episode={episode}
-                offline={offline.offline[episode.id] ?? null}
-                offlineBusy={offline.busy[episode.id]}
-                onSaveOffline={(target) => void offline.save(target)}
-                onRemoveOffline={(id) => void offline.remove(id)}
-                onDelete={(target) => void handleDelete(target)}
-                onRetry={(target) => void handleRetry(target)}
-              />
-            ))
+            <div className="space-y-6">
+              {sections.map((section) => (
+                <section key={section.key} className="space-y-3">
+                  <SectionHeader title={section.title} count={section.episodes.length} />
+                  {section.episodes.map((episode) => (
+                    <EpisodeCard
+                      key={episode.id}
+                      episode={episode}
+                      offline={offline.offline[episode.id] ?? null}
+                      offlineBusy={offline.busy[episode.id]}
+                      onSaveOffline={(target) => void offline.save(target)}
+                      onRemoveOffline={(id) => void offline.remove(id)}
+                      onDelete={(target) => void handleDelete(target)}
+                      onRetry={(target) => void handleRetry(target)}
+                    />
+                  ))}
+                </section>
+              ))}
+            </div>
           )}
         </main>
 

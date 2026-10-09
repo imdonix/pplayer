@@ -31,9 +31,16 @@ export function initDb(): void {
       file_path TEXT,
       file_size INTEGER,
       position_sec REAL NOT NULL DEFAULT 0,
+      completed_at INTEGER,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS episodes_created_at_idx ON episodes (created_at DESC);
   `)
+  // Databases created before finished episodes were tracked: add the column in place.
+  try {
+    sqlite.exec("ALTER TABLE episodes ADD COLUMN completed_at INTEGER")
+  } catch {
+    // Column already exists.
+  }
 }

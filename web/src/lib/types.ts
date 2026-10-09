@@ -12,6 +12,8 @@ export interface Episode {
   error: string | null
   fileSize: number | null
   positionSec: number
+  /** When the episode was last played to the end; null while unfinished. */
+  completedAt: number | null
   createdAt: number
   updatedAt: number
   thumbnail: string | null

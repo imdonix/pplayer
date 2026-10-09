@@ -51,24 +51,38 @@ episodesRoute.get("/:id", (c) => {
   return c.json(dto)
 })
 
-/** Store the playback position so the client can resume later. */
+/** Store the playback position so the client can resume later, and track when an episode is finished. */
 episodesRoute.patch("/:id", async (c) => {
   const id = c.req.param("id")
-  const body = await c.req.json<{ positionSec?: unknown }>().catch(() => null)
+  const body = await c.req
+    .json<{ positionSec?: unknown; completed?: unknown }>()
+    .catch(() => null)
   const position =
     typeof body?.positionSec === "number" && Number.isFinite(body.positionSec)
       ? Math.max(0, body.positionSec)
       : null
   if (position === null) return c.json({ error: "positionSec must be a number" }, 400)
+  const completed = typeof body?.completed === "boolean" ? body.completed : null
 
   log.debug(`[${id}] position saved at ${Math.round(position)}s`)
+  const now = Date.now()
+  // Finishing the episode records completion; listening past the intro again
+  // (a replay) clears it so the episode counts as unfinished once more.
+  const completedAt =
+    completed === true ? now : completed === false || position > 5 ? null : undefined
   const row = db
     .update(episodes)
-    .set({ positionSec: position, updatedAt: Date.now() })
+    .set({
+      positionSec: position,
+      updatedAt: now,
+      ...(completedAt === undefined ? {} : { completedAt }),
+    })
     .where(eq(episodes.id, id))
     .returning()
     .get()
   if (!row) return c.json({ error: "Episode not found" }, 404)
+  // Completion changes matter on every device; position ticks are not broadcast.
+  if (completed !== null) broadcast({ type: "episode", episode: toDto(row) })
   return c.json(toDto(row))
 })
 

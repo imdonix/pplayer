@@ -1,10 +1,9 @@
 import {
-  ArrowDownToLine,
   AudioLines,
-  Check,
   CircleAlert,
   EllipsisVertical,
   HardDrive,
+  HardDriveDownload,
   LoaderCircle,
   Pause,
   Play,
@@ -29,9 +28,6 @@ import { formatBytes, formatDate, formatTime } from "@/lib/format"
 import type { OfflineMeta } from "@/lib/offline"
 import { isWorking, type Episode } from "@/lib/types"
 import { cn } from "@/lib/utils"
-
-const RING_RADIUS = 16
-const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS
 
 function Thumbnail({ episode, className }: { episode: Episode; className?: string }) {
   const localSrc = episode.thumbnail ? withToken(episode.thumbnail) : null
@@ -73,106 +69,66 @@ function Thumbnail({ episode, className }: { episode: Episode; className?: strin
   )
 }
 
+function savingLabel(busy: number | null | undefined): string {
+  if (busy == null || busy < 0) return "Downloading…"
+  return `Downloading… ${Math.round(Math.min(1, Math.max(0, busy)) * 100)}%`
+}
+
 /**
- * Spotify-style offline toggle: download arrow -> progress ring while saving ->
- * green check with a pop animation once the episode is on the device.
+ * Read-only download state for the card: muted when the episode only streams,
+ * a progress badge while it is being saved to this device, green once it is
+ * on the device. The actual save/remove actions live in the ⋮ menu so a tap
+ * next to Play can never delete the local copy by accident.
  */
-function DownloadToggle({
-  episode,
+function DownloadBadge({
   offline,
   busy,
-  onSave,
-  onRemove,
 }: {
-  episode: Episode
   offline: OfflineMeta | null
   busy: number | null | undefined
-  onSave: () => void
-  onRemove: () => void
 }) {
-  const saving = busy !== undefined
-  const downloaded = offline != null
-  const recentlySaved = downloaded && Date.now() - offline.savedAt < 6000
-
-  if (saving) {
-    const indeterminate = busy == null || busy < 0
-    const percent = indeterminate ? null : Math.round(Math.min(1, Math.max(0, busy)) * 100)
+  if (busy !== undefined) {
     return (
-      <button
-        type="button"
-        disabled
-        aria-label={
-          percent == null ? "Downloading for offline" : `Downloading for offline (${percent}%)`
-        }
-        title={percent == null ? "Downloading…" : `Downloading… ${percent}%`}
-        className="relative flex size-9 shrink-0 items-center justify-center rounded-full border bg-secondary text-secondary-foreground"
+      <Badge variant="secondary" className="gap-1 font-normal">
+        <LoaderCircle className="animate-spin" />
+        {savingLabel(busy)}
+      </Badge>
+    )
+  }
+
+  if (offline) {
+    const recentlySaved = Date.now() - offline.savedAt < 6000
+    return (
+      <Badge
+        variant="secondary"
+        className={cn(
+          "gap-1 bg-emerald-600/15 font-normal text-emerald-700 dark:text-emerald-400",
+          recentlySaved && "animate-pop",
+        )}
       >
-        <svg viewBox="0 0 36 36" className="absolute inset-0 size-full -rotate-90" aria-hidden>
-          <circle
-            cx="18"
-            cy="18"
-            r={RING_RADIUS}
-            fill="none"
-            strokeWidth="3"
-            className="stroke-primary/20"
-          />
-          <circle
-            cx="18"
-            cy="18"
-            r={RING_RADIUS}
-            fill="none"
-            strokeWidth="3"
-            strokeLinecap="round"
-            className={cn(
-              "stroke-primary transition-[stroke-dashoffset] duration-300",
-              indeterminate && "animate-spin",
-            )}
-            strokeDasharray={indeterminate ? "25 75" : String(RING_CIRCUMFERENCE)}
-            strokeDashoffset={
-              indeterminate ? 0 : RING_CIRCUMFERENCE * (1 - Math.min(1, Math.max(0, busy)))
-            }
-          />
-        </svg>
-        <ArrowDownToLine className="size-4 text-muted-foreground" />
-      </button>
+        <HardDrive />
+        Downloaded
+      </Badge>
     )
   }
 
   return (
-    <Button
-      type="button"
-      size="icon"
-      variant="secondary"
-      className={cn(
-        "size-9 rounded-full transition-colors",
-        downloaded && "bg-emerald-600 text-white hover:bg-emerald-600/90",
-        recentlySaved && "animate-pop",
-      )}
-      onClick={downloaded ? onRemove : onSave}
-      disabled={!episode.mediaUrl}
-      aria-pressed={downloaded}
-      aria-label={downloaded ? "Downloaded for offline — remove" : "Download for offline"}
-      title={downloaded ? "Downloaded for offline — tap to remove" : "Download for offline"}
-    >
-      <span className="relative flex size-4 items-center justify-center">
-        <ArrowDownToLine
-          className={cn(
-            "absolute transition-all duration-300",
-            downloaded ? "-rotate-90 scale-0 opacity-0" : "rotate-0 scale-100 opacity-100",
-          )}
-        />
-        <Check
-          className={cn(
-            "absolute transition-all duration-300",
-            downloaded ? "rotate-0 scale-100 opacity-100" : "rotate-90 scale-0 opacity-0",
-          )}
-        />
-      </span>
-    </Button>
+    <Badge variant="secondary" className="gap-1 bg-muted/60 font-normal text-muted-foreground/70">
+      <HardDrive />
+      Not downloaded
+    </Badge>
   )
 }
 
-function StatusArea({ episode, offline }: { episode: Episode; offline: OfflineMeta | null }) {
+function StatusArea({
+  episode,
+  offline,
+  busy,
+}: {
+  episode: Episode
+  offline: OfflineMeta | null
+  busy: number | null | undefined
+}) {
   if (isWorking(episode)) {
     return (
       <div className="mt-2 space-y-1.5">
@@ -199,12 +155,7 @@ function StatusArea({ episode, offline }: { episode: Episode; offline: OfflineMe
 
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-      {offline && (
-        <Badge variant="secondary" className="gap-1">
-          <HardDrive />
-          Offline
-        </Badge>
-      )}
+      <DownloadBadge offline={offline} busy={busy} />
       {episode.positionSec > 5 && <span>Resume at {formatTime(episode.positionSec)}</span>}
       {episode.fileSize != null && (
         <span className="ml-auto">{formatBytes(episode.fileSize)}</span>
@@ -234,6 +185,7 @@ export function EpisodeCard({
   const isCurrent = player.episode?.id === episode.id
   const isPlaying = isCurrent && player.playing
   const playable = episode.status === "ready" && !!episode.mediaUrl
+  const saving = offlineBusy !== undefined
 
   const handlePlay = () => {
     if (!playable) return
@@ -262,16 +214,6 @@ export function EpisodeCard({
             </button>
 
             <div className="flex shrink-0 items-center gap-1">
-              {playable && (
-                <DownloadToggle
-                  episode={episode}
-                  offline={offline}
-                  busy={offlineBusy}
-                  onSave={() => onSaveOffline(episode)}
-                  onRemove={() => onRemoveOffline(episode.id)}
-                />
-              )}
-
               <Button
                 size="icon"
                 variant={isCurrent ? "default" : "secondary"}
@@ -306,6 +248,20 @@ export function EpisodeCard({
                       <Play /> Play from start
                     </DropdownMenuItem>
                   )}
+                  {playable &&
+                    (saving ? (
+                      <DropdownMenuItem disabled>
+                        <LoaderCircle className="animate-spin" /> {savingLabel(offlineBusy)}
+                      </DropdownMenuItem>
+                    ) : offline ? (
+                      <DropdownMenuItem onSelect={() => onRemoveOffline(episode.id)}>
+                        <HardDrive /> Remove download
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem onSelect={() => onSaveOffline(episode)}>
+                        <HardDriveDownload /> Download for offline
+                      </DropdownMenuItem>
+                    ))}
                   {episode.status === "error" && (
                     <DropdownMenuItem onSelect={() => onRetry(episode)}>
                       <RefreshCw /> Retry download
@@ -325,7 +281,7 @@ export function EpisodeCard({
             {formatTime(episode.durationSec)} · {formatDate(episode.createdAt)}
           </p>
 
-          <StatusArea episode={episode} offline={offline} />
+          <StatusArea episode={episode} offline={offline} busy={offlineBusy} />
         </div>
       </div>
     </Card>

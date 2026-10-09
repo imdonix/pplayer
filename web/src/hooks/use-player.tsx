@@ -70,7 +70,7 @@ export function PlayerProvider({
   onSavePosition,
 }: {
   children: ReactNode
-  onSavePosition: (id: string, seconds: number) => void
+  onSavePosition: (id: string, seconds: number, completed?: boolean) => void
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const episodeRef = useRef<Episode | null>(null)
@@ -188,7 +188,7 @@ export function PlayerProvider({
       setPlaying(false)
       setMediaSessionPlaybackState("paused")
       const current = episodeRef.current
-      if (current) savePositionRef.current(current.id, 0)
+      if (current) savePositionRef.current(current.id, 0, true)
       audio.currentTime = 0
       setCurrentTime(0)
     }
