@@ -27,11 +27,23 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // App shell: everything except the API is precached.
-        navigateFallback: "/index.html",
-        navigateFallbackDenylist: [/^\/api\//],
-        globPatterns: ["**/*.{js,css,html,svg,png,webmanifest}"],
+        // App shell: scripts, styles and icons are precached, but *not* the
+        // HTML. Navigations are network-first, so a plain refresh always picks
+        // up a newly deployed index.html; the last loaded copy is what keeps
+        // the app working offline. (Navigations must not be bound to a
+        // precached index.html: that serves old HTML before the network on
+        // every load, so refreshes kept showing the previous version.)
+        navigateFallback: undefined,
+        globPatterns: ["**/*.{js,css,svg,png,webmanifest}"],
         runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.mode === "navigate",
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "pplayer-pages",
+              networkTimeoutSeconds: 4,
+            },
+          },
           {
             // Cache thumbnails so the library looks right offline.
             urlPattern: ({ url }) => url.pathname.startsWith("/api/thumbnails/"),
