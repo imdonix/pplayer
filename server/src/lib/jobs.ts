@@ -263,7 +263,9 @@ async function downloadAudio(
     "--newline",
     "--no-warnings",
     "--force-overwrites",
-    "-f", "bestaudio/best",
+    // Prefer YouTube's AAC stream (m4a): it can be remuxed instead of
+    // transcoded, turning minutes of ffmpeg work into milliseconds.
+    "-f", "bestaudio[ext=m4a]/bestaudio/best",
     "-o", resolve(dir, "source.%(ext)s"),
     ...cookieArgs(),
     url,
@@ -303,7 +305,10 @@ async function convertToM4a(
   // (webm/opus, etc.) is transcoded to AAC.
   const copy = COPY_EXTENSIONS.has(ext)
   log.info(`[${id}] ffmpeg: ${copy ? "remuxing (stream copy)" : "transcoding to AAC 192k"}`)
-  const codecArgs = copy ? ["-c:a", "copy"] : ["-c:a", "aac", "-b:a", "192k"]
+  // Opus/WebM sources must be transcoded. The fast AAC coder roughly halves
+  // that (benchmark: 30 min of audio ≈ 57s → 30s) with a negligible quality
+  // difference at 192 kbps.
+  const codecArgs = copy ? ["-c:a", "copy"] : ["-c:a", "aac", "-b:a", "192k", "-aac_coder", "fast"]
   const args = [
     "-hide_banner", "-loglevel", "error", "-y",
     "-i", source,
