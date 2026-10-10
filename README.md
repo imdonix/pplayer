@@ -14,6 +14,7 @@ A dead simple podcast downloader and player app
 
 - **YouTube → podcast** — live progress for metadata, download and ffmpeg conversion
 - **Player** — seek, ±15/30 s skip, speed, resume, lock-screen controls (Media Session)
+- **SponsorBlock** — community sponsor segments are fetched with each download, shown as green bars and skipped automatically
 - **Offline** — per-episode downloads from the ⋮ menu; audio is stored on the device (IndexedDB) and plays without a connection
 - **Library** — cached locally, survives offline reloads; grouped into Continue watching / New / Watched
 - **Single API key** — one account, done
@@ -51,6 +52,9 @@ bun run dev:web      # UI on :5173 (proxies /api)
 | `WEB_DIR` | `web/dist` | Built frontend to serve |
 | `YTDLP_BIN` / `FFMPEG_BIN` | `yt-dlp` / `ffmpeg` | External tool paths |
 | `YTDLP_COOKIES` | — | Netscape `cookies.txt` for YouTube bot checks |
+| `SPONSORBLOCK` | `true` | Fetch SponsorBlock segments on download |
+| `SPONSORBLOCK_CATEGORIES` | `sponsor,selfpromo,interaction` | SponsorBlock categories to skip |
+| `SPONSORBLOCK_API` | `https://sponsor.ajay.app` | SponsorBlock API base URL |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
 
 ## Logs & troubleshooting
@@ -86,6 +90,7 @@ All routes require the key as `Authorization: Bearer <key>`; media and SSE also 
 | `GET` / `POST` | `/api/episodes` | List episodes / add `{ "url": ... }` |
 | `PATCH` / `DELETE` | `/api/episodes/:id` | Save position / delete |
 | `POST` | `/api/episodes/:id/retry` | Retry a failed download |
+| `POST` | `/api/episodes/:id/sponsorblock` | Re-fetch SponsorBlock segments |
 | `GET` | `/api/media/:id` | Stream audio (HTTP Range) |
 | `GET` | `/api/thumbnails/:id` | Episode thumbnail |
 | `GET` | `/api/events` | SSE: live progress updates |

@@ -9,9 +9,16 @@ import { episodes } from "../db/schema.ts"
 import { broadcast } from "../lib/bus.ts"
 import { cancelJob, enqueue, getEpisodeDto } from "../lib/jobs.ts"
 import { log } from "../lib/log.ts"
+import { fetchSponsorSegments } from "../lib/sponsorblock.ts"
 import { toDto } from "../lib/types.ts"
 
 export const episodesRoute = new Hono()
+
+const YOUTUBE_ID = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/
+
+function youTubeVideoId(url: string): string | null {
+  return YOUTUBE_ID.exec(url)?.[1] ?? null
+}
 
 function isYouTubeUrl(url: string): boolean {
   try {
@@ -104,6 +111,34 @@ episodesRoute.post("/:id/retry", (c) => {
   broadcast({ type: "episode", episode: toDto(updated) })
   enqueue(id)
   return c.json(toDto(updated))
+})
+
+/** (Re)fetch SponsorBlock segments for an episode that is already downloaded. */
+episodesRoute.post("/:id/sponsorblock", async (c) => {
+  const id = c.req.param("id")
+  const row = db.select().from(episodes).where(eq(episodes.id, id)).get()
+  if (!row) return c.json({ error: "Episode not found" }, 404)
+  if (!config.sponsorBlock) return c.json({ error: "SponsorBlock is disabled" }, 400)
+
+  const videoId = row.videoId ?? youTubeVideoId(row.url)
+  if (!videoId) return c.json({ error: "This episode is not a YouTube video" }, 400)
+
+  try {
+    const segments = await fetchSponsorSegments(videoId)
+    const updated = db
+      .update(episodes)
+      .set({ videoId, sponsorSegments: JSON.stringify(segments), updatedAt: Date.now() })
+      .where(eq(episodes.id, id))
+      .returning()
+      .get()
+    if (!updated) return c.json({ error: "Episode not found" }, 404)
+    log.info(`[${id}] sponsorblock: ${segments.length} segment(s) (manual refresh)`)
+    broadcast({ type: "episode", episode: toDto(updated) })
+    return c.json(toDto(updated))
+  } catch (err) {
+    log.warn(`[${id}] sponsorblock lookup failed: ${err instanceof Error ? err.message : err}`)
+    return c.json({ error: "SponsorBlock lookup failed" }, 502)
+  }
 })
 
 episodesRoute.delete("/:id", async (c) => {

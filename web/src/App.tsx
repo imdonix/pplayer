@@ -46,7 +46,7 @@ function SectionHeader({ title, count }: { title: string; count: number }) {
 }
 
 function Library({ onSignOut }: { onSignOut: () => void }) {
-  const { episodes, connected, addEpisode, deleteEpisode, retryEpisode, savePosition } =
+  const { episodes, connected, addEpisode, deleteEpisode, retryEpisode, refreshSponsorSegments, savePosition } =
     useLibrary(onSignOut)
   const offline = useOffline()
   const [addOpen, setAddOpen] = useState(false)
@@ -132,8 +132,25 @@ function Library({ onSignOut }: { onSignOut: () => void }) {
     [retryEpisode],
   )
 
+  const handleFetchSponsor = useCallback(
+    async (episode: Episode) => {
+      try {
+        const updated = await refreshSponsorSegments(episode.id)
+        const count = updated.sponsorSegments?.length ?? 0
+        toast.success(
+          count > 0
+            ? `${count} sponsor segment${count === 1 ? "" : "s"} found`
+            : "No sponsor segments found",
+        )
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not fetch sponsor segments")
+      }
+    },
+    [refreshSponsorSegments],
+  )
+
   return (
-    <PlayerProvider onSavePosition={savePosition}>
+    <PlayerProvider episodes={episodes} onSavePosition={savePosition}>
       <div className="min-h-dvh pb-44">
         <header className="sticky top-0 z-30 border-b bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur supports-[backdrop-filter]:bg-background/80">
           <div className="mx-auto flex h-14 w-full max-w-2xl items-center gap-2 px-4">
@@ -179,6 +196,7 @@ function Library({ onSignOut }: { onSignOut: () => void }) {
                       onRemoveOffline={(id) => void offline.remove(id)}
                       onDelete={(target) => void handleDelete(target)}
                       onRetry={(target) => void handleRetry(target)}
+                      onFetchSponsor={(target) => void handleFetchSponsor(target)}
                     />
                   ))}
                 </section>

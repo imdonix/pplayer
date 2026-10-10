@@ -1,4 +1,4 @@
-import { HardDrive, LogOut } from "lucide-react"
+import { HardDrive, LogOut, Megaphone } from "lucide-react"
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { usePlayer } from "@/hooks/use-player"
 import { formatBytes } from "@/lib/format"
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -37,6 +38,7 @@ export function SettingsDialog({
   const [usage, setUsage] = useState<number | null>(null)
   const [quota, setQuota] = useState<number | null>(null)
   const [removing, setRemoving] = useState(false)
+  const player = usePlayer()
 
   useEffect(() => {
     if (!open) return
@@ -87,6 +89,22 @@ export function SettingsDialog({
           >
             Remove all offline downloads
           </Button>
+        </Section>
+
+        <Section title="SponsorBlock">
+          <div className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
+            <span className="flex items-center gap-2">
+              <Megaphone className="size-4 text-muted-foreground" />
+              Auto-skip sponsor segments
+            </span>
+            <Button variant={player.autoSkip ? "default" : "outline"} size="sm" onClick={player.toggleAutoSkip}>
+              {player.autoSkip ? "On" : "Off"}
+            </Button>
+          </div>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Sponsor, self-promotion and interaction ranges (from the community SponsorBlock
+            database) are fetched with each episode, shown as green bars and skipped automatically.
+          </p>
         </Section>
 
         <Section title="Account">

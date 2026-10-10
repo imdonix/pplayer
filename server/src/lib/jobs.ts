@@ -7,6 +7,7 @@ import { db } from "../db/index.ts"
 import { episodes, type EpisodeStatus } from "../db/schema.ts"
 import { broadcast } from "./bus.ts"
 import { log } from "./log.ts"
+import { fetchSponsorSegments } from "./sponsorblock.ts"
 import { toDto } from "./types.ts"
 
 type Subprocess = ReturnType<typeof Bun.spawn>
@@ -134,6 +135,7 @@ async function processEpisode(id: string, job: LiveJob): Promise<void> {
     author: meta.author,
     durationSec: meta.duration,
     thumbnailUrl: meta.thumbnail,
+    videoId: meta.videoId,
   })
   log.info(
     `[${id}] video: "${meta.title}"${meta.author ? ` by ${meta.author}` : ""}` +
@@ -158,7 +160,15 @@ async function processEpisode(id: string, job: LiveJob): Promise<void> {
   }
   if (job.cancel) return
 
-  // 2. Download the best audio-only stream
+  // 2. SponsorBlock: fetch community-marked sponsor ranges so the player can
+  // skip them. Best effort — a lookup failure must never fail the download.
+  if (config.sponsorBlock && meta.isYouTube && meta.videoId) {
+    stageReporter(id, "fetching", "Fetching sponsor segments")(null, true)
+    await fetchAndStoreSponsorSegments(id, meta.videoId)
+  }
+  if (job.cancel) return
+
+  // 3. Download the best audio-only stream
   const reportDownload = stageReporter(id, "downloading", "Downloading audio")
   const downloadStarted = Date.now()
   log.info(`[${id}] downloading audio with yt-dlp…`)
@@ -170,7 +180,7 @@ async function processEpisode(id: string, job: LiveJob): Promise<void> {
     `[${id}] downloaded ${formatMb(sourceSize)} in ${elapsed(downloadStarted)} (${basename(source)})`,
   )
 
-  // 3. Convert / remux to M4A (AAC) which plays everywhere, including iOS
+  // 4. Convert / remux to M4A (AAC) which plays everywhere, including iOS
   const duration = meta.duration ?? getRow(id)?.durationSec ?? null
   const reportConvert = stageReporter(id, "converting", "Converting to M4A")
   const output = resolve(dir, "audio.m4a")
@@ -194,6 +204,17 @@ async function processEpisode(id: string, job: LiveJob): Promise<void> {
   log.info(`[${id}] ready: "${meta.title}" (${formatMb(info.size)})`)
 }
 
+/** Look up SponsorBlock segments and persist them; logs and ignores failures. */
+async function fetchAndStoreSponsorSegments(id: string, videoId: string): Promise<void> {
+  try {
+    const segments = await fetchSponsorSegments(videoId)
+    update(id, { sponsorSegments: JSON.stringify(segments) })
+    log.info(`[${id}] sponsorblock: ${segments.length} segment(s)`)
+  } catch (err) {
+    log.warn(`[${id}] sponsorblock lookup failed (ignored): ${err instanceof Error ? err.message : err}`)
+  }
+}
+
 function formatMb(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
@@ -207,6 +228,8 @@ interface VideoMeta {
   author: string
   duration: number | null
   thumbnail: string | null
+  videoId: string | null
+  isYouTube: boolean
 }
 
 function cookieArgs(): string[] {
@@ -223,7 +246,7 @@ async function fetchMetadata(url: string, job: LiveJob): Promise<VideoMeta> {
     proc.exited,
   ])
   job.child = null
-  if (job.cancel) return { title: "", author: "", duration: null, thumbnail: null }
+  if (job.cancel) return { title: "", author: "", duration: null, thumbnail: null, videoId: null, isYouTube: false }
   if (code !== 0) throw new Error(ytError(stderr) ?? `yt-dlp exited with code ${code}`)
 
   let json: any
@@ -243,11 +266,28 @@ async function fetchMetadata(url: string, job: LiveJob): Promise<VideoMeta> {
       ? [...json.thumbnails].sort((a: any, b: any) => (b.width ?? 0) - (a.width ?? 0))[0]?.url
       : null)
 
+  const extractor = String(json.extractor_key ?? json.extractor ?? "").toLowerCase()
+  const host = (() => {
+    try {
+      return new URL(json.webpage_url ?? url).hostname.replace(/^(www|m|music)\./, "").toLowerCase()
+    } catch {
+      return ""
+    }
+  })()
+  const isYouTube =
+    extractor.includes("youtube") ||
+    host === "youtube.com" ||
+    host === "youtu.be" ||
+    host === "youtube-nocookie.com"
+  const videoId = typeof json.id === "string" && json.id.trim() ? json.id.trim() : null
+
   return {
     title: typeof json.title === "string" && json.title.trim() ? json.title.trim() : "Untitled",
     author: [json.uploader, json.channel].find((value) => typeof value === "string" && value.trim()) ?? "",
     duration: typeof json.duration === "number" && Number.isFinite(json.duration) ? Math.round(json.duration) : null,
     thumbnail: typeof thumbnail === "string" ? thumbnail : null,
+    videoId,
+    isYouTube,
   }
 }
 

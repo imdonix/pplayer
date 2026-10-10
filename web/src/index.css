@@ -127,11 +127,7 @@
 .player-range::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 9999px;
-  background: linear-gradient(
-    to right,
-    var(--primary) var(--progress, 0%),
-    var(--muted) var(--progress, 0%)
-  );
+  background: transparent;
 }
 .player-range::-webkit-slider-thumb {
   -webkit-appearance: none;
@@ -146,12 +142,12 @@
 .player-range::-moz-range-track {
   height: 4px;
   border-radius: 9999px;
-  background: var(--muted);
+  background: transparent;
 }
 .player-range::-moz-range-progress {
   height: 4px;
   border-radius: 9999px;
-  background: var(--primary);
+  background: transparent;
 }
 .player-range::-moz-range-thumb {
   height: 14px;

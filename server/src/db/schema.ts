@@ -8,6 +8,10 @@ export const episodes = sqliteTable("episodes", {
   durationSec: integer("duration_sec"),
   thumbnailPath: text("thumbnail_path"),
   thumbnailUrl: text("thumbnail_url"),
+  /** YouTube video id, used to look up SponsorBlock segments. */
+  videoId: text("video_id"),
+  /** JSON array of { start, end, category } sponsor ranges. */
+  sponsorSegments: text("sponsor_segments"),
   /** pending | fetching | downloading | converting | ready | error */
   status: text("status").notNull().default("pending"),
   stage: text("stage"),

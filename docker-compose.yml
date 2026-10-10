@@ -12,6 +12,10 @@ services:
       API_KEY: ${API_KEY:-changeme}
       # debug | info | warn | error (default: info)
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # SponsorBlock: fetch community sponsor segments on download (default true)
+      SPONSORBLOCK: ${SPONSORBLOCK:-true}
+      # Categories to skip (default: sponsor,selfpromo,interaction)
+      # SPONSORBLOCK_CATEGORIES: "sponsor,selfpromo,interaction"
       # Optional: export YouTube cookies to get past bot checks:
       # YTDLP_COOKIES: /cookies.txt
     volumes:

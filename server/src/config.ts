@@ -17,6 +17,15 @@ export const config = {
   ytDlpBin: process.env.YTDLP_BIN ?? "yt-dlp",
   ffmpegBin: process.env.FFMPEG_BIN ?? "ffmpeg",
   cookiesFile: process.env.YTDLP_COOKIES ? resolve(process.env.YTDLP_COOKIES) : "",
+  /** Look up SponsorBlock segments when a YouTube episode is downloaded. */
+  sponsorBlock: (process.env.SPONSORBLOCK ?? "true").toLowerCase() !== "false",
+  /** SponsorBlock categories to fetch (https://wiki.sponsor.ajay.app). */
+  sponsorBlockCategories: (process.env.SPONSORBLOCK_CATEGORIES ?? "sponsor,selfpromo,interaction")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean),
+  /** Base URL of the SponsorBlock API. */
+  sponsorBlockApi: (process.env.SPONSORBLOCK_API ?? "https://sponsor.ajay.app").replace(/\/+$/, ""),
 }
 
 export const dirs = {

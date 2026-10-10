@@ -245,6 +245,12 @@ export function useLibrary(onUnauthorized: () => void) {
     setEpisodes((previous) => previous.map((item) => (item.id === id ? episode : item)))
   }, [])
 
+  const refreshSponsorSegments = useCallback(async (id: string) => {
+    const episode = await api<Episode>(`/api/episodes/${id}/sponsorblock`, { method: "POST" })
+    setEpisodes((previous) => previous.map((item) => (item.id === id ? episode : item)))
+    return episode
+  }, [])
+
   const savePosition = useCallback((id: string, positionSec: number, completed?: boolean) => {
     // Keep the local list in step immediately: starting an episode again marks
     // it unfinished, finishing it (position 0 + completed) files it under
@@ -263,5 +269,5 @@ export function useLibrary(onUnauthorized: () => void) {
     void flushPending()
   }, [flushPending])
 
-  return { episodes, connected, refresh, addEpisode, deleteEpisode, retryEpisode, savePosition }
+  return { episodes, connected, refresh, addEpisode, deleteEpisode, retryEpisode, refreshSponsorSegments, savePosition }
 }

@@ -10,10 +10,11 @@ import {
 } from "react"
 import { withToken } from "@/lib/api"
 import { getOfflineBlob } from "@/lib/offline"
-import type { Episode } from "@/lib/types"
+import type { Episode, SponsorSegment } from "@/lib/types"
 
 const RATES = [0.75, 1, 1.25, 1.5, 1.75, 2]
 const RATE_STORAGE = "pplayer:rate"
+const AUTOSKIP_STORAGE = "pplayer:sponsorblock"
 const POSITION_SAVE_INTERVAL = 10_000
 
 type SourceKind = "stream" | "offline"
@@ -27,11 +28,16 @@ interface PlayerContextValue {
   rate: number
   source: SourceKind | null
   error: string | null
+  /** Sponsor ranges for the current episode. */
+  segments: SponsorSegment[]
+  /** Whether sponsor ranges are skipped automatically. */
+  autoSkip: boolean
   play: (episode: Episode, options?: { restart?: boolean }) => void
   toggle: () => void
   seek: (seconds: number) => void
   skip: (delta: number) => void
   cycleRate: () => void
+  toggleAutoSkip: () => void
   close: () => void
 }
 
@@ -67,9 +73,11 @@ function updateMediaSessionPosition(audio: HTMLAudioElement): void {
 
 export function PlayerProvider({
   children,
+  episodes,
   onSavePosition,
 }: {
   children: ReactNode
+  episodes: Episode[]
   onSavePosition: (id: string, seconds: number, completed?: boolean) => void
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -78,6 +86,7 @@ export function PlayerProvider({
   const objectUrlRef = useRef<string | null>(null)
   const pendingSeekRef = useRef(0)
   const lastSavedRef = useRef(0)
+  const lastTimeRef = useRef(0)
   const savePositionRef = useRef(onSavePosition)
   savePositionRef.current = onSavePosition
 
@@ -94,6 +103,12 @@ export function PlayerProvider({
   })
   const rateRef = useRef(rate)
   rateRef.current = rate
+
+  const [autoSkip, setAutoSkip] = useState<boolean>(
+    () => localStorage.getItem(AUTOSKIP_STORAGE) !== "false",
+  )
+  const autoSkipRef = useRef(autoSkip)
+  autoSkipRef.current = autoSkip
 
   const revokeObjectUrl = useCallback(() => {
     if (objectUrlRef.current) {
@@ -150,6 +165,7 @@ export function PlayerProvider({
             audio.currentTime = pendingSeekRef.current
             pendingSeekRef.current = 0
           }
+          lastTimeRef.current = audio.currentTime
           void audio.play().catch(() => {
             setLoading(false)
             setError("Could not play this episode")
@@ -167,12 +183,33 @@ export function PlayerProvider({
       saveCurrentPosition()
     }
     const onTimeUpdate = () => {
-      setCurrentTime(audio.currentTime)
+      const time = audio.currentTime
+      const previous = lastTimeRef.current
+      lastTimeRef.current = time
+      setCurrentTime(time)
       if (!audio.paused && Date.now() - lastSavedRef.current > POSITION_SAVE_INTERVAL) {
         lastSavedRef.current = Date.now()
         saveCurrentPosition()
       }
       updateMediaSessionPosition(audio)
+
+      // SponsorBlock auto-skip: jump over a segment the moment playback
+      // crosses its start. Requiring a small forward delta means seeking into
+      // the middle of a segment (or resuming inside it) does not skip.
+      if (autoSkipRef.current) {
+        const segments = episodeRef.current?.sponsorSegments
+        const delta = time - previous
+        if (segments && segments.length > 0 && delta > 0 && delta < 2) {
+          const segment = segments.find((item) => previous <= item.start && time >= item.start && time < item.end)
+          if (segment) {
+            const limit =
+              Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : segment.end
+            audio.currentTime = Math.min(segment.end, limit)
+            lastTimeRef.current = audio.currentTime
+            setCurrentTime(audio.currentTime)
+          }
+        }
+      }
     }
     const onDurationChange = () => setDuration(Number.isFinite(audio.duration) ? audio.duration : 0)
     const onWaiting = () => setLoading(true)
@@ -183,6 +220,7 @@ export function PlayerProvider({
         audio.currentTime = pendingSeekRef.current
         pendingSeekRef.current = 0
       }
+      lastTimeRef.current = audio.currentTime
     }
     const onEnded = () => {
       setPlaying(false)
@@ -247,6 +285,24 @@ export function PlayerProvider({
     }
   }, [revokeObjectUrl])
 
+  // Keep the playing episode's sponsor segments fresh when they are fetched
+  // after playback started (e.g. a manual refresh from the library).
+  useEffect(() => {
+    const current = episodeRef.current
+    if (!current) return
+    const latest = episodes.find((item) => item.id === current.id)
+    if (!latest) return
+    const before = current.sponsorSegments ?? []
+    const after = latest.sponsorSegments ?? []
+    const changed =
+      before.length !== after.length ||
+      before.some((seg, index) => seg.start !== after[index]?.start || seg.end !== after[index]?.end)
+    if (changed) {
+      episodeRef.current = { ...current, sponsorSegments: latest.sponsorSegments }
+      setEpisode(episodeRef.current)
+    }
+  }, [episodes])
+
   const play = useCallback(
     (next: Episode, options?: { restart?: boolean }) => {
       const audio = audioRef.current
@@ -273,6 +329,7 @@ export function PlayerProvider({
         next.positionSec > 5 && (!next.durationSec || next.positionSec < next.durationSec - 10)
           ? next.positionSec
           : 0
+      lastTimeRef.current = pendingSeekRef.current
 
       // Start streaming synchronously: iOS only allows audio to begin in the
       // same task as the user's tap, and an await (e.g. the IndexedDB lookup
@@ -304,6 +361,7 @@ export function PlayerProvider({
             audio.currentTime = pendingSeekRef.current
             pendingSeekRef.current = 0
           }
+          lastTimeRef.current = audio.currentTime
           if (wasPlaying) void audio.play().catch(() => {})
           else setLoading(false)
         })
@@ -323,6 +381,7 @@ export function PlayerProvider({
     if (!audio || !Number.isFinite(seconds)) return
     const limit = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : seconds
     audio.currentTime = Math.max(0, Math.min(seconds, limit))
+    lastTimeRef.current = audio.currentTime
     setCurrentTime(audio.currentTime)
   }, [])
 
@@ -340,6 +399,14 @@ export function PlayerProvider({
       const next = RATES[(RATES.indexOf(previous) + 1) % RATES.length]
       localStorage.setItem(RATE_STORAGE, String(next))
       if (audioRef.current) audioRef.current.playbackRate = next
+      return next
+    })
+  }, [])
+
+  const toggleAutoSkip = useCallback(() => {
+    setAutoSkip((previous) => {
+      const next = !previous
+      localStorage.setItem(AUTOSKIP_STORAGE, String(next))
       return next
     })
   }, [])
@@ -420,14 +487,17 @@ export function PlayerProvider({
       rate,
       source,
       error,
+      segments: episode?.sponsorSegments ?? [],
+      autoSkip,
       play,
       toggle,
       seek,
       skip,
       cycleRate,
+      toggleAutoSkip,
       close,
     }),
-    [episode, playing, loading, currentTime, duration, rate, source, error, play, toggle, seek, skip, cycleRate, close],
+    [episode, playing, loading, currentTime, duration, rate, source, error, autoSkip, play, toggle, seek, skip, cycleRate, toggleAutoSkip, close],
   )
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>

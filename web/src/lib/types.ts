@@ -1,5 +1,12 @@
 export type EpisodeStatus = "pending" | "fetching" | "downloading" | "converting" | "ready" | "error"
 
+/** A community-marked non-content range (SponsorBlock). */
+export interface SponsorSegment {
+  start: number
+  end: number
+  category: string
+}
+
 export interface Episode {
   id: string
   url: string
@@ -19,6 +26,8 @@ export interface Episode {
   thumbnail: string | null
   thumbnailRemote: string | null
   mediaUrl: string | null
+  /** Sponsor ranges the player can skip (null = none found / older cache). */
+  sponsorSegments?: SponsorSegment[] | null
 }
 
 export type ServerEvent =

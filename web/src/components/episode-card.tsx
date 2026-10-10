@@ -5,6 +5,7 @@ import {
   HardDrive,
   HardDriveDownload,
   LoaderCircle,
+  Megaphone,
   Pause,
   Play,
   RefreshCw,
@@ -172,6 +173,7 @@ export function EpisodeCard({
   onRemoveOffline,
   onDelete,
   onRetry,
+  onFetchSponsor,
 }: {
   episode: Episode
   offline: OfflineMeta | null
@@ -180,6 +182,7 @@ export function EpisodeCard({
   onRemoveOffline: (id: string) => void
   onDelete: (episode: Episode) => void
   onRetry: (episode: Episode) => void
+  onFetchSponsor: (episode: Episode) => void
 }) {
   const player = usePlayer()
   const isCurrent = player.episode?.id === episode.id
@@ -262,6 +265,11 @@ export function EpisodeCard({
                         <HardDriveDownload /> Download for offline
                       </DropdownMenuItem>
                     ))}
+                  {playable && episode.sponsorSegments == null && (
+                    <DropdownMenuItem onSelect={() => onFetchSponsor(episode)}>
+                      <Megaphone /> Fetch sponsor segments
+                    </DropdownMenuItem>
+                  )}
                   {episode.status === "error" && (
                     <DropdownMenuItem onSelect={() => onRetry(episode)}>
                       <RefreshCw /> Retry download

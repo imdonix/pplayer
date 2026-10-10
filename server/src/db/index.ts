@@ -24,6 +24,8 @@ export function initDb(): void {
       duration_sec INTEGER,
       thumbnail_path TEXT,
       thumbnail_url TEXT,
+      video_id TEXT,
+      sponsor_segments TEXT,
       status TEXT NOT NULL DEFAULT 'pending',
       stage TEXT,
       progress REAL,
@@ -40,6 +42,17 @@ export function initDb(): void {
   // Databases created before finished episodes were tracked: add the column in place.
   try {
     sqlite.exec("ALTER TABLE episodes ADD COLUMN completed_at INTEGER")
+  } catch {
+    // Column already exists.
+  }
+  // Databases created before SponsorBlock support.
+  try {
+    sqlite.exec("ALTER TABLE episodes ADD COLUMN video_id TEXT")
+  } catch {
+    // Column already exists.
+  }
+  try {
+    sqlite.exec("ALTER TABLE episodes ADD COLUMN sponsor_segments TEXT")
   } catch {
     // Column already exists.
   }
