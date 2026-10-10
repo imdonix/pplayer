@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { api, ApiError, withToken } from "@/lib/api"
+import {
+  confirmPending,
+  dropPending,
+  listPending,
+  markPendingSynced,
+  queuePosition,
+  reconcilePending,
+  withPending,
+} from "@/lib/progress"
 import type { Episode, ServerEvent } from "@/lib/types"
 
 const LIBRARY_STORAGE = "pplayer:library"
@@ -40,14 +49,92 @@ export function useLibrary(onUnauthorized: () => void) {
     if (error instanceof ApiError && error.status === 401) unauthorizedRef.current()
   }, [])
 
+  const flushingRef = useRef(false)
+
+  /**
+   * Push any positions queued while offline. A successful PATCH only marks the
+   * entry as accepted; it is dropped once a server read confirms it, so a
+   * refresh that raced the request can never wipe the local progress.
+   */
+  const flushPending = useCallback(async () => {
+    if (flushingRef.current) return
+    flushingRef.current = true
+    try {
+      for (;;) {
+        const entries = listPending().filter((entry) => entry.serverUpdatedAt == null)
+        if (entries.length === 0) break
+        let failed = false
+        let progressed = false
+        for (const entry of entries) {
+          try {
+            const episode = await api<Episode>(`/api/episodes/${entry.id}`, {
+              method: "PATCH",
+              body: JSON.stringify({
+                positionSec: entry.positionSec,
+                ...(entry.completed === null ? {} : { completed: entry.completed }),
+              }),
+            })
+            markPendingSynced(entry.id, entry.updatedAt, episode.updatedAt)
+            progressed = true
+          } catch (error) {
+            if (error instanceof ApiError && error.status === 401) {
+              unauthorizedRef.current()
+              return
+            }
+            // The episode is gone server-side; there is nothing left to save.
+            if (error instanceof ApiError && error.status === 404) {
+              dropPending(entry.id)
+              progressed = true
+              continue
+            }
+            // Offline or transient: keep it for the next attempt.
+            failed = true
+          }
+        }
+        // New positions may have been queued while we were pushing.
+        if (failed || !progressed) break
+      }
+    } finally {
+      flushingRef.current = false
+    }
+  }, [])
+
+  /** Merge a full server list with locally queued positions. */
+  const applyServerEpisodes = useCallback((incoming: Episode[]) => {
+    const pending = new Map(reconcilePending(incoming).map((entry) => [entry.id, entry]))
+    setEpisodes(
+      pending.size === 0
+        ? incoming
+        : incoming.map((episode) => {
+            const entry = pending.get(episode.id)
+            return entry ? withPending(episode, entry) : episode
+          }),
+    )
+  }, [])
+
+  /** Merge a single server update (SSE) with any queued position for it. */
+  const applyServerEpisode = useCallback((incoming: Episode) => {
+    const entry = confirmPending(incoming)
+    const merged = entry ? withPending(incoming, entry) : incoming
+    setEpisodes((previous) => {
+      const index = previous.findIndex((episode) => episode.id === incoming.id)
+      if (index === -1) return [merged, ...previous]
+      const next = [...previous]
+      next[index] = merged
+      return next
+    })
+  }, [])
+
   const refresh = useCallback(async () => {
     try {
       const list = await api<Episode[]>("/api/episodes")
-      setEpisodes(list)
+      applyServerEpisodes(list)
+      // A reachable server also means we can push anything still queued.
+      void flushPending()
     } catch (error) {
       handleError(error)
     }
-  }, [handleError])
+  }, [applyServerEpisodes, flushPending, handleError])
 
   useEffect(() => {
     void refresh()
@@ -60,15 +147,9 @@ export function useLibrary(onUnauthorized: () => void) {
       try {
         const payload = JSON.parse(message.data) as ServerEvent
         if (payload.type === "snapshot") {
-          setEpisodes(payload.episodes)
+          applyServerEpisodes(payload.episodes)
         } else if (payload.type === "episode") {
-          setEpisodes((previous) => {
-            const index = previous.findIndex((episode) => episode.id === payload.episode.id)
-            if (index === -1) return [payload.episode, ...previous]
-            const next = [...previous]
-            next[index] = payload.episode
-            return next
-          })
+          applyServerEpisode(payload.episode)
         } else if (payload.type === "deleted") {
           setEpisodes((previous) => previous.filter((episode) => episode.id !== payload.id))
         }
@@ -80,7 +161,10 @@ export function useLibrary(onUnauthorized: () => void) {
     const connect = () => {
       if (disposed) return
       source = new EventSource(withToken("/api/events"))
-      source.onopen = () => setConnected(true)
+      source.onopen = () => {
+        setConnected(true)
+        void flushPending()
+      }
       source.onmessage = handleMessage
       source.onerror = () => {
         setConnected(false)
@@ -103,7 +187,22 @@ export function useLibrary(onUnauthorized: () => void) {
       window.clearTimeout(reconnectTimer)
       source?.close()
     }
-  }, [refresh])
+  }, [refresh, applyServerEpisodes, applyServerEpisode, flushPending])
+
+  // Push queued positions on mount and whenever the connection comes back.
+  useEffect(() => {
+    void flushPending()
+  }, [flushPending])
+
+  useEffect(() => {
+    if (connected) void flushPending()
+  }, [connected, flushPending])
+
+  useEffect(() => {
+    const onOnline = () => void flushPending()
+    window.addEventListener("online", onOnline)
+    return () => window.removeEventListener("online", onOnline)
+  }, [flushPending])
 
   // Poll while the stream is down (server restarting, phone just woke up, ...).
   useEffect(() => {
@@ -115,11 +214,14 @@ export function useLibrary(onUnauthorized: () => void) {
   // Catch up immediately when the app becomes visible again.
   useEffect(() => {
     const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") void refresh()
+      if (document.visibilityState === "visible") {
+        void refresh()
+        void flushPending()
+      }
     }
     document.addEventListener("visibilitychange", onVisibilityChange)
     return () => document.removeEventListener("visibilitychange", onVisibilityChange)
-  }, [refresh])
+  }, [refresh, flushPending])
 
   const addEpisode = useCallback(async (url: string) => {
     const episode = await api<Episode>("/api/episodes", {
@@ -134,6 +236,7 @@ export function useLibrary(onUnauthorized: () => void) {
 
   const deleteEpisode = useCallback(async (id: string) => {
     await api(`/api/episodes/${id}`, { method: "DELETE" })
+    dropPending(id)
     setEpisodes((previous) => previous.filter((episode) => episode.id !== id))
   }, [])
 
@@ -155,11 +258,10 @@ export function useLibrary(onUnauthorized: () => void) {
         return next
       }),
     )
-    api(`/api/episodes/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ positionSec, ...(completed === undefined ? {} : { completed }) }),
-    }).catch(() => {})
-  }, [])
+    // Queue the change (survives offline + app restarts) and try to push it now.
+    queuePosition(id, positionSec, completed === undefined ? null : completed)
+    void flushPending()
+  }, [flushPending])
 
   return { episodes, connected, refresh, addEpisode, deleteEpisode, retryEpisode, savePosition }
 }
