@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---------- Stage 1: build the web app ----------
-FROM oven/bun:1 AS web-build
+FROM oven/bun:1.4.4 AS web-build
 WORKDIR /web
 COPY web/package.json web/bun.lock ./
 RUN bun install --frozen-lockfile
@@ -9,13 +9,13 @@ COPY web/ ./
 RUN bun run build
 
 # ---------- Stage 2: production server dependencies ----------
-FROM oven/bun:1 AS server-deps
+FROM oven/bun:1.4.4 AS server-deps
 WORKDIR /app
 COPY server/package.json server/bun.lock ./
 RUN bun install --frozen-lockfile --production
 
 # ---------- Stage 3: runtime ----------
-FROM oven/bun:1-slim AS runtime
+FROM oven/bun:1.4.4-slim AS runtime
 
 # ffmpeg converts the downloaded audio; curl is used for the health check.
 RUN apt-get update \

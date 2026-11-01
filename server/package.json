@@ -1,6 +1,7 @@
 {
   "name": "pplayer-server",
   "private": true,
+  "packageManager": "bun@1.4.4",
   "type": "module",
   "scripts": {
     "dev": "bun --watch src/index.ts",
@@ -9,11 +10,11 @@
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",
-    "hono": "^4.13.13"
+    "hono": "^4.13.16"
   },
   "devDependencies": {
-    "@types/bun": "^1.4.2",
-    "@types/node": "^26.6.4",
+    "@types/bun": "^1.4.4",
+    "@types/node": "^26.6.6",
     "typescript": "^7.0.2"
   }
 }
